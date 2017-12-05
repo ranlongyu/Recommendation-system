@@ -24,7 +24,8 @@ def get_lines():
             lines.append(line_dic)
         return lines
 #获取所以新闻列表
-def get_all_news(lines):
+def make_all_news():
+    lines = get_lines()
     all_news = []
     for line in lines:
         news = {
@@ -45,6 +46,31 @@ def get_all_news(lines):
     filename = 'all_news.json'
     with open(filename, 'w') as f_obj:
             json.dump(new_all_news, f_obj)
+#构建用户新闻向量
+def make_user_news_vectors():
+    lines = get_lines()
+    filename = 'all_news.json'
+    with open(filename) as f_obj:
+        all_news = json.load(f_obj)
+    user_news_vectors = {}
+    for line in lines:
+        if line['user_id'] not in user_news_vectors:
+            user = []
+            for news in all_news:
+                if line['news_title'] == news['news_title']:
+                    user.append(1)
+                else:
+                    user.append(0)
+            user_news_vectors[line['user_id']] = user
+        else:
+            for i, news in enumerate(all_news):
+                if line['news_title'] == news['news_title']:
+                    user_news_vectors[line['user_id']][i] = 1
+                    break
+    # 写入文件
+    filename = 'user_news_vectors.json'
+    with open(filename, 'w') as f_obj:
+        json.dump(user_news_vectors, f_obj)
 #构建词典
 def get_keywords():
     filename = 'all_news.json'
@@ -70,7 +96,7 @@ def get_all_text_vectors(keywords):
             all_text_vectors.append(text_vectors)
     return all_text_vectors
 #构建分类器
-def get_km_cluster():
+def make_km_cluster():
     all_text_vectors = get_all_text_vectors(get_keywords())
     clf = KMeans(n_clusters=10, max_iter=3000)
     #归一化后，进行聚类
@@ -90,8 +116,8 @@ def get_km_cluster():
     filename = 'all_news.json'
     with open(filename, 'w') as f_obj:
         json.dump(new_all_news, f_obj)
-#新闻推荐
-def recommend():
+#基于内容的新闻推荐系统
+def content_recommend():
     lines = get_lines()
     while True:
         print('=' * 40)
@@ -128,7 +154,88 @@ def recommend():
                 print(news['news_title'], news['news_time'])
                 if i > 10:
                     break
+#基于用户的新闻推荐系统
+def user_recommend():
+    filename = 'user_news_vectors.json'
+    with open(filename) as f_obj:
+        user_news_vectors = json.load(f_obj)
+    filename = 'all_news.json'
+    with open(filename) as f_obj:
+        all_news = json.load(f_obj)
+    while True:
+        user_id = input("请输入用户编号：")
+        if user_id not in user_news_vectors:
+            print("用户非原有用户，请从新输入")
+            continue
+        else:
+            user = user_news_vectors[user_id]
+            #找用户读过的文章，存在reading中
+            readings = []
+            for i, r_or_n in enumerate(user):
+                if r_or_n == 1:
+                    readings.append(i)
+            #找读过输入用户读过文章的用户,至少三篇相同
+            other_user_id = []
+            for uid, other in user_news_vectors.items():
+                if uid == user_id:
+                    continue
+                i = 0
+                for reading in readings:
+                    if other[reading] == 1:
+                        i = i+1
+                    if i == 3:
+                        other_user_id.append(uid)
+                        break
+            #计算用户相似度,用Jaccard算法
+            user_similarity = {}
+            for uid in other_user_id:
+                intersection = 0
+                union = 0
+                for (i1, i2) in zip(user, user_news_vectors[uid]):
+                    if i1 == i2 == 1:
+                        intersection += 1
+                    if i1 == 1 or i2 == 1:
+                        union += 1
+                user_similarity[uid] = intersection/union
+            #按用户相似度排序,返回二元组的列表
+            user_similarity = sorted(user_similarity.items(), key=lambda item: item[1], reverse=True)
+            #用户阅读过的新闻
+            user_read = []
+            for i, i1 in enumerate(user):
+                if i1 ==1:
+                    user_read.append(i)
+            #输出新闻
+            print('=' * 40)
+            print('用户阅读过的新闻为：')
+            print('=' * 40)
+            for i, news in enumerate(all_news):
+                for news_id in user_read:
+                    if i == news_id:
+                        print(news['news_title'])
+            #进行新闻推荐
+            recommend_news = []
+            for user_id in user_similarity:
+                for i, (i1, i2) in enumerate(zip(user, user_news_vectors[user_id[0]])):
+                    if i1 == 0 and i2 == 1:
+                        if i not in recommend_news:
+                            recommend_news.append(i)
+                            if len(recommend_news) > 20:
+                                break
+                if len(recommend_news) > 20:
+                    break
+            #输出新闻
+            print('=' * 40)
+            print('推荐的新闻为：')
+            print('=' * 40)
+            for i, news in enumerate(all_news):
+                for news_id in recommend_news:
+                    if i == news_id:
+                        print(news['news_title'])
+            print('=' * 40)
 
-#get_all_news(get_lines())
-#get_km_cluster()
-recommend()
+#make_all_news()
+#make_km_cluster()
+#content_recommend()
+
+#make_user_news_vectors()
+user_recommend()
